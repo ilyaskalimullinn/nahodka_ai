@@ -1,9 +1,11 @@
 from contextlib import asynccontextmanager
 import logging
 import asyncio
+from dotenv import load_dotenv
 
 from fastapi import FastAPI
 
+load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
