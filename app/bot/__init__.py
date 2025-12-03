@@ -6,6 +6,7 @@ from aiogram import Bot, Dispatcher, types, BaseMiddleware
 
 from bot.handlers import workflow
 from db import SessionLocal
+from model import model_service
 
 
 async def set_commands(bot: Bot):
@@ -48,6 +49,21 @@ class DbMiddleware(BaseMiddleware):
 
 
 dp.update.middleware(DbMiddleware())
+
+
+class ModelMiddleware(BaseMiddleware):
+    async def __call__(
+        self,
+        handler: Callable[[types.TelegramObject, Dict[str, Any]], Awaitable[Any]],
+        event: types.TelegramObject,
+        data: Dict[str, Any],
+    ) -> Any:
+        data["model_service"] = model_service
+        result = await handler(event, data)
+        return result
+
+
+dp.update.middleware(ModelMiddleware())
 
 
 async def start_bot():

@@ -7,6 +7,7 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from sqlalchemy.orm import Session
 
 from db import City, User
+from model import ModelService
 
 router = Router()
 
@@ -120,3 +121,26 @@ async def change_topk(message: types.Message, state: FSMContext):
         "Сколько релевантных ответов тебе находить?", reply_markup=keyboard
     )
     await state.set_state(ChangeSettings.top_k)
+
+
+@router.message()
+async def answer_question(
+    message: types.Message,
+    state: FSMContext,
+    session: Session,
+    model_service: ModelService,
+):
+    text = message.text
+    if text is None:
+        await message.answer(
+            "Пока поддерживаются только текстовые запросы, попробуй заново"
+        )
+        return
+    status_msg = await message.answer(
+        "Считаю... Имей в виду, пока я просто отдаю эмбеддинг текста и больше ничего"
+    )
+    embeddings = model_service.encode_text(text)
+
+    await status_msg.edit_text(f"Готово!\nЭмбеддинги:{embeddings[:10]}")
+
+    await state.set_state(ChangeSettings.city)
