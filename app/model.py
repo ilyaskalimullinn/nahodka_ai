@@ -1,13 +1,19 @@
 from typing import List
-from abc import ABC
+from abc import ABC, abstractmethod
 import os
 
+from PIL import Image
 import torch
 import open_clip
 
 
 class ModelService(ABC):
-    def encode_text(text: str) -> List[int]:
+    @abstractmethod
+    def encode_text(self, text: str) -> List[int]:
+        pass
+
+    @abstractmethod
+    def encode_image(self, image_path: str) -> List[int]:
         pass
 
 
@@ -26,6 +32,13 @@ class OpenClipModelService(ModelService):
     def encode_text(self, text: str) -> List[int]:
         tensor = self.tokenizer([text]).to(self.device)
         embeddings = self.model.encode_text(tensor).detach().cpu()
+        embeddings = embeddings.tolist()[0]
+        return embeddings
+
+    def encode_image(self, image_path: str) -> List[int]:
+        image = Image.open(image_path)
+        tensor = self.preprocess(image).to(self.device).unsqueeze(0)
+        embeddings = self.model.encode_image(tensor).detach().cpu()
         embeddings = embeddings.tolist()[0]
         return embeddings
 

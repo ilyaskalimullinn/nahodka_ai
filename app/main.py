@@ -3,9 +3,11 @@ import logging
 import asyncio
 from dotenv import load_dotenv
 
-from fastapi import FastAPI
-
 load_dotenv()
+
+from fastapi import FastAPI
+from fastadmin import fastapi_app as admin_app
+
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -34,6 +36,7 @@ async def lifespan(application: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+app.mount("/admin", admin_app)
 
 
 @app.get("/api/v1/health")
