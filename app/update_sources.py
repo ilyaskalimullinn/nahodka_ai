@@ -4,6 +4,7 @@ import logging
 
 from dotenv import load_dotenv
 from sqlalchemy import func
+import numpy as np
 
 load_dotenv()
 
@@ -34,7 +35,7 @@ async def main():
     else:
         cities = [session.get(City, args.city_id)]
 
-    all_messages = []
+    messages_to_insert = []
 
     for city in cities:
         print(f"Updating for {city}")
@@ -65,14 +66,15 @@ async def main():
                 hours_back=args.number_of_hours,
                 min_id=last_message_id_for_channel,
             )
-            all_messages.extend(channel_messages)
 
-    print(f"Gathered {len(all_messages)} messages. Converting to ORM style")
-
-    messages_to_insert = []
-    for msg in all_messages:
-        msg_object = process_tg_message(msg, model_service=model_service)
-        messages_to_insert.append(msg_object)
+            print(
+                f"Gathered {len(channel_messages)} messages. Getting embeddings, converting to ORM style"
+            )
+            for msg in channel_messages:
+                msg_object = await process_tg_message(
+                    msg, channel_id=channel.channel_id, model_service=model_service
+                )
+                messages_to_insert.append(msg_object)
 
     print(f"Total {len(messages_to_insert)} messages to save in DB")
     session.add_all(messages_to_insert)
@@ -80,26 +82,45 @@ async def main():
     print("Saving finished")
 
 
-def process_tg_message(msg, model_service: ModelService) -> TelegramChannelMessage:
+async def process_tg_message(
+    msg, channel_id: str, model_service: ModelService
+) -> TelegramChannelMessage:
     photo_id = None
+    image_embedding = None
     if msg.media is not None:
         if msg.media.photo is not None:
             photo_id = msg.media.photo.id
+            photo_path = f"assets/photos/{channel_id}/{photo_id}.png"
+            await msg.download_media(photo_path)
 
-    embedding = None
+            image_embedding = model_service.encode_image(photo_path)
+
+    text_embedding = None
     if msg.message is not None and len(msg.message) > 0:
-        embedding = model_service.encode_text(msg.message)
+        text_embedding = model_service.encode_text(msg.message)
+
+    embedding = combine_embeddings(image_embedding, text_embedding)
 
     msg_object = TelegramChannelMessage(
         message_id=msg.id,
         grouped_id=msg.grouped_id,
         date=msg.date,
-        channel_id=msg.peer_id.channel_id,
+        channel_id=channel_id,
         photo_id=photo_id,
         message_text=msg.message,
         embedding=embedding,
     )
     return msg_object
+
+
+def combine_embeddings(image_embedding, text_embedding):
+    if image_embedding is None:
+        return text_embedding
+
+    if text_embedding is None:
+        return image_embedding
+
+    return (np.array(image_embedding) + np.array(text_embedding)) / 2
 
 
 if __name__ == "__main__":

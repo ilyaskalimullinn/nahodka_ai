@@ -208,3 +208,5 @@ __marimo__/
 .idea/
 
 *.session
+*.session-journal
+assets/

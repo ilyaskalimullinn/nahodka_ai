@@ -4,9 +4,10 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from db import City, User
+from db import City, User, TelegramChannelMessage, TelegramChannelSource
 from model import ModelService
 
 router = Router()
@@ -136,11 +137,34 @@ async def answer_question(
             "Пока поддерживаются только текстовые запросы, попробуй заново"
         )
         return
-    status_msg = await message.answer(
-        "Считаю... Имей в виду, пока я просто отдаю эмбеддинг текста и больше ничего"
+    status_msg = await message.answer("Считаю...")
+
+    user = session.query(User).filter(User.id == message.from_user.id).first()
+
+    if user is None:
+        await message.answer("Сначала напиши `/start` и выбери настройки!")
+        return
+
+    embedding = model_service.encode_text(text)
+
+    results = session.scalars(
+        select(TelegramChannelMessage)
+        .join(TelegramChannelMessage.channel)
+        .filter(TelegramChannelSource.city_id == user.city_id)
+        .order_by(TelegramChannelMessage.embedding.l2_distance(embedding))
+        .limit(user.top_k)
     )
-    embeddings = model_service.encode_text(text)
+    results = list(results)
 
-    await status_msg.edit_text(f"Готово!\nЭмбеддинги:{embeddings[:10]}")
+    if len(results) == 0:
+        await status_msg.edit_text("Не нашлось результатов!")
+        return
 
-    await state.set_state(ChangeSettings.city)
+    await status_msg.edit_text("Наиболее релевантные посты:")
+
+    for msg in results:
+        await message.bot.forward_message(
+            chat_id=message.chat.id,
+            from_chat_id=msg.channel_id,
+            message_id=msg.message_id,
+        )

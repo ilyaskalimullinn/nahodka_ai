@@ -86,12 +86,13 @@ class TelegramChannelMessage(Base):
     grouped_id = Column(BigInteger, nullable=True)
     date = Column(DateTime, nullable=False)
     channel_id = Column(
-        BigInteger, ForeignKey("telegram_channel_source.channel_id"), nullable=False
+        String, ForeignKey("telegram_channel_source.channel_id"), nullable=False
     )
     photo_id = Column(BigInteger, nullable=True)
     message_text = Column(String, nullable=False, default="")
 
     embedding = mapped_column(Vector(MODEL_DIM), nullable=True)
+    channel = relationship("TelegramChannelSource")
 
     def __repr__(self):
         return f"TelegramChannelMessage<id={self.id}, message_id={self.message_id}, grouped_id={self.grouped_id}, date={self.date}>"
@@ -101,7 +102,7 @@ class TelegramChannelSource(Base):
     __tablename__ = "telegram_channel_source"
     id = Column(BigInteger, primary_key=True)
     city_id = Column(BigInteger, ForeignKey("city.id"))
-    channel_id = Column(BigInteger, unique=True, nullable=False)
+    channel_id = Column(String, unique=True, nullable=False)
 
     city = relationship("City")
 
