@@ -9,6 +9,7 @@ load_dotenv()
 
 from db import City, SessionLocal, TelegramChannelMessage, TelegramChannelSource
 from providers import get_channel_messages_simple
+from model import model_service, ModelService
 
 
 def parse_args():
@@ -70,25 +71,35 @@ async def main():
 
     messages_to_insert = []
     for msg in all_messages:
-        photo_id = None
-        if msg.media is not None:
-            if msg.media.photo is not None:
-                photo_id = msg.media.photo.id
-
-        msg_object = TelegramChannelMessage(
-            message_id=msg.id,
-            grouped_id=msg.grouped_id,
-            date=msg.date,
-            channel_id=msg.peer_id.channel_id,
-            photo_id=photo_id,
-            message_text=msg.message,
-        )
+        msg_object = process_tg_message(msg, model_service=model_service)
         messages_to_insert.append(msg_object)
 
     print(f"Total {len(messages_to_insert)} messages to save in DB")
     session.add_all(messages_to_insert)
     session.commit()
     print("Saving finished")
+
+
+def process_tg_message(msg, model_service: ModelService) -> TelegramChannelMessage:
+    photo_id = None
+    if msg.media is not None:
+        if msg.media.photo is not None:
+            photo_id = msg.media.photo.id
+
+    embedding = None
+    if msg.message is not None and len(msg.message) > 0:
+        embedding = model_service.encode_text(msg.message)
+
+    msg_object = TelegramChannelMessage(
+        message_id=msg.id,
+        grouped_id=msg.grouped_id,
+        date=msg.date,
+        channel_id=msg.peer_id.channel_id,
+        photo_id=photo_id,
+        message_text=msg.message,
+        embedding=embedding,
+    )
+    return msg_object
 
 
 if __name__ == "__main__":

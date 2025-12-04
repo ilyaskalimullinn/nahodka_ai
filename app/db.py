@@ -16,6 +16,7 @@ from sqlalchemy import (
     select,
     update,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.orm import (
     sessionmaker,
@@ -34,6 +35,8 @@ POSTGRES_USER = os.environ.get("POSTGRES_USER", "postgres")
 POSTGRES_PASSWORD = os.environ.get("POSTGRES_PASSWORD", "changeme")
 POSTGRES_HOST = os.environ.get("POSTGRES_HOST", "127.0.0.1")
 POSTGRES_PORT = os.environ.get("POSTGRES_PORT", "5432")
+
+MODEL_DIM = int(os.environ["MODEL_DIM"])
 
 DATABASE_URL = (
     f"postgresql+psycopg2://{POSTGRES_USER}:{POSTGRES_PASSWORD}"
@@ -87,6 +90,8 @@ class TelegramChannelMessage(Base):
     )
     photo_id = Column(BigInteger, nullable=True)
     message_text = Column(String, nullable=False, default="")
+
+    embedding = mapped_column(Vector(MODEL_DIM), nullable=True)
 
     def __repr__(self):
         return f"TelegramChannelMessage<id={self.id}, message_id={self.message_id}, grouped_id={self.grouped_id}, date={self.date}>"
@@ -281,5 +286,9 @@ class TelegramChannelMessageAdmin(FixedSqlAlchemyModelAdmin):
         "photo_id": {"type": "number", "min": 1, "step": 1},
     }
 
+
+with SessionLocal() as session:
+    session.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+    session.commit()
 
 Base.metadata.create_all(engine)
