@@ -23,9 +23,10 @@ class OpenClipModelService(ModelService):
         self.model_path_or_name = model_path_or_name
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device("cpu")
 
         self.model, self.preprocess = open_clip.create_model_from_pretrained(
-            model_path_or_name, device=self.device
+            model_path_or_name, device=self.device, precision="fp16"
         )
         self.tokenizer = open_clip.get_tokenizer(model_path_or_name)
 
@@ -37,7 +38,7 @@ class OpenClipModelService(ModelService):
 
     def encode_image(self, image_path: str) -> List[int]:
         image = Image.open(image_path)
-        tensor = self.preprocess(image).to(self.device).unsqueeze(0)
+        tensor = self.preprocess(image).unsqueeze(0).half().to(self.device)
         embeddings = self.model.encode_image(tensor).detach().cpu()
         embeddings = embeddings.tolist()[0]
         return embeddings
