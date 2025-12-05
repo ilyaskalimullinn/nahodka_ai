@@ -12,6 +12,7 @@ from model import model_service
 async def set_commands(bot: Bot):
     commands = [
         types.BotCommand(command="/start", description="Начало"),
+        types.BotCommand(command="/help", description="Помощь с ботом"),
         types.BotCommand(command="/city", description="Поменять город"),
         types.BotCommand(
             command="/top_k", description="Поменять количество релевантных результатов"

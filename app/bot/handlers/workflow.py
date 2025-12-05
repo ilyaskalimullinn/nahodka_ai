@@ -1,10 +1,12 @@
+import os
+from pathlib import Path
 import aiohttp
 from aiogram import Router, types, F
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 
 from db import City, User, TelegramChannelMessage, TelegramChannelSource
@@ -91,7 +93,7 @@ async def process_topk(
     session.commit()
 
     await callback.message.edit_text(
-        f"Настройки сохранены!\nГород: {user.city.name}\nСколько выдавать: {top_k}"
+        f"Настройки сохранены!\nГород: {user.city.name}\nСколько выдавать: {top_k}\nТеперь введи запрос ИЛИ отправь одну фотографию!"
     )
     await state.clear()
 
@@ -106,6 +108,13 @@ async def start(message: types.Message, state: FSMContext, session: Session):
         f"Настройки\n---\nГород: {user.city.name}\nСколько выдавать: {user.top_k}"
     )
     await state.clear()
+
+
+@router.message(Command("help"))
+async def start(message: types.Message, state: FSMContext, session: Session):
+    await message.answer(
+        "Привет! Этот бот — помощник в поиске потерянных вещей. Просто отправь описание вещи или ее фотографию (только одно из двух), и мы отправим тебе наиболее подходящие посты"
+    )
 
 
 # Separate commands
@@ -132,28 +141,67 @@ async def answer_question(
     model_service: ModelService,
 ):
     text = message.text
-    if text is None:
+    photo_id = None
+    if message.photo is not None and len(message.photo) > 0:
+        photo_id = message.photo[-1].file_id
+
+    if (text is None) == (photo_id is None):
         await message.answer(
-            "Пока поддерживаются только текстовые запросы, попробуй заново"
+            "Отправь одно из двух: либо фото, либо текстовое сообщение"
         )
         return
-    status_msg = await message.answer("Считаю...")
 
     user = session.query(User).filter(User.id == message.from_user.id).first()
-
     if user is None:
         await message.answer("Сначала напиши `/start` и выбери настройки!")
         return
 
-    embedding = model_service.encode_text(text)
+    status_msg = await message.answer("Считаю...")
+    if text is not None:
+        embedding = model_service.encode_text(text)
+    elif photo_id is not None:
+        save_dir = (
+            Path(__file__) / f"../../../assets/photos/__users__/{user.id}"
+        ).resolve()
+        os.makedirs(save_dir, exist_ok=True)
+        photo_path = save_dir / f"{photo_id}.png"
+        await message.bot.download(file=photo_id, destination=str(photo_path))
 
-    results = session.scalars(
-        select(TelegramChannelMessage)
+        embedding = model_service.encode_image(photo_path)
+
+    distance_expr = TelegramChannelMessage.embedding.l2_distance(embedding)
+
+    partition_key = func.coalesce(
+        TelegramChannelMessage.grouped_id, TelegramChannelMessage.message_id
+    )
+
+    ranked_messages_cte = (
+        select(
+            TelegramChannelMessage,
+            distance_expr.label("distance"),
+            func.row_number()
+            .over(
+                partition_by=partition_key,
+                order_by=distance_expr,
+            )
+            .label("rn"),
+        )
         .join(TelegramChannelMessage.channel)
         .filter(TelegramChannelSource.city_id == user.city_id)
-        .order_by(TelegramChannelMessage.embedding.l2_distance(embedding))
+        .cte("ranked_messages")
+    )
+
+    results = (
+        select(TelegramChannelMessage)
+        .join(
+            ranked_messages_cte, TelegramChannelMessage.id == ranked_messages_cte.c.id
+        )
+        .where(ranked_messages_cte.c.rn == 1)
+        .order_by(ranked_messages_cte.c.distance)
         .limit(user.top_k)
     )
+    results = session.scalars(results)
+
     results = list(results)
 
     if len(results) == 0:

@@ -79,7 +79,12 @@ class User(Base):
 class TelegramChannelMessage(Base):
     __tablename__ = "telegram_channel_message"
     __table_args__ = (
-        UniqueConstraint("message_id", "channel_id", name="uq_message_id_channel_id"),
+        UniqueConstraint(
+            "message_id",
+            "channel_id",
+            "photo_id",
+            name="uq_message_id_channel_id_photo_id",
+        ),
     )
     id = Column(BigInteger, primary_key=True, autoincrement=True)
     message_id = Column(BigInteger, nullable=False)
